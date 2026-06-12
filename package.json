@@ -8,11 +8,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^12.14.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.29.7",
     "@vitejs/plugin-react": "^4.2.1",
+    "acorn": "^8.17.0",
+    "sucrase": "^3.35.1",
     "vite": "^5.1.0",
     "vite-plugin-pwa": "^0.19.2"
   }

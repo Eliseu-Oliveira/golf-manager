@@ -1,4 +1,9 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import {
+  auth, db, googleProvider,
+  signInWithGoogle, signOutUser, onAuthChange,
+  loadFirestoreData, saveFirestoreData, subscribeToData,
+} from "./firebase.js";
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
 const Ico = ({ d, size=18, stroke="currentColor", fill="none", sw=1.75 }) => (
@@ -96,9 +101,10 @@ const INITIAL = {
   alertas:[], documentos:[], despesasFixas:[],
   onboardingDone: false,
 };
+// Local fallback (used while loading from Firestore)
 const memStore = {};
-function loadData(){ try{ const r=localStorage.getItem(SK); if(r) return {...INITIAL,...JSON.parse(r)}; }catch(e){ try{ const r=memStore[SK]; if(r) return {...INITIAL,...JSON.parse(r)}; }catch(e2){} } return INITIAL; }
-function saveData(d){ const s=JSON.stringify(d); try{ localStorage.setItem(SK,s); }catch(e){ memStore[SK]=s; } }
+function loadLocalData(){ try{ const r=localStorage.getItem(SK); if(r) return {...INITIAL,...JSON.parse(r)}; }catch(e){ try{ const r=memStore[SK]; if(r) return {...INITIAL,...JSON.parse(r)}; }catch(e2){} } return INITIAL; }
+function saveLocalData(d){ const s=JSON.stringify(d); try{ localStorage.setItem(SK,s); }catch(e){ memStore[SK]=s; } }
 
 // ─── CHARTS ──────────────────────────────────────────────────────────────────
 function LineChart({ data, color, h=80, labels, yLabel="" }) {
@@ -285,13 +291,17 @@ function Onboarding({T,onFinish}){
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 export default function App(){
-  const [data,setData]     = useState(loadData);
+  const [data,setData]     = useState(loadLocalData);
   const [tab,setTab]       = useState("dashboard");
   const [modal,setModal]   = useState(null);
   const [form,setForm]     = useState({});
   const [toasts,setToasts] = useState([]);
   const [darkMode,setDark] = useState(true);
   const [mobile,setMobile] = useState(typeof window!=="undefined"&&window.innerWidth<700);
+  const [user,setUser]     = useState(null);   // Firebase auth user
+  const [authLoading,setAuthLoading] = useState(true);
+  const [syncing,setSyncing] = useState(false);
+  const saveTimeout = useRef(null);
   const [showMenu,setShowMenu] = useState(false);
   const [confirm,setConfirm]   = useState(null);
   const [searchQ,setSearchQ]   = useState("");
@@ -308,7 +318,48 @@ export default function App(){
   const Uc = URGC(T);
 
   useEffect(()=>{ const h=()=>setMobile(window.innerWidth<700); window.addEventListener("resize",h); return()=>window.removeEventListener("resize",h); },[]);
-  useEffect(()=>{ saveData(data); },[data]);
+  // ── AUTH LISTENER ─────────────────────────────────────────────────────────
+  useEffect(()=>{
+    const unsub = onAuthChange(async (u)=>{
+      setUser(u);
+      setAuthLoading(false);
+      if(u){
+        // Load from Firestore on login
+        setSyncing(true);
+        const remote = await loadFirestoreData();
+        if(remote){ setData({...INITIAL,...remote}); saveLocalData({...INITIAL,...remote}); }
+        setSyncing(false);
+      }
+    });
+    return unsub;
+  },[]);
+
+  // ── REALTIME SYNC (listen to Firestore changes from other devices) ──────────
+  useEffect(()=>{
+    if(!user) return;
+    const unsub = subscribeToData((remote)=>{
+      setData(d=>{
+        // Only update if remote is newer (has more records or different km)
+        const remoteTotal = (remote.abastecimentos||[]).length + (remote.servicos||[]).length;
+        const localTotal  = (d.abastecimentos||[]).length   + (d.servicos||[]).length;
+        if(remoteTotal >= localTotal) return {...INITIAL,...remote};
+        return d;
+      });
+    });
+    return unsub;
+  },[user]);
+
+  // ── SAVE: local always, Firestore debounced when logged in ─────────────────
+  useEffect(()=>{
+    saveLocalData(data);
+    if(!user) return;
+    if(saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(()=>{
+      setSyncing(true);
+      saveFirestoreData(data).finally(()=>setSyncing(false));
+    }, 1500);
+    return ()=>{ if(saveTimeout.current) clearTimeout(saveTimeout.current); };
+  },[data,user]);
 
   const toast=useCallback((msg,color,icon)=>{ const id=Date.now(); setToasts(t=>[...t,{id,msg,color,icon}]); setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),2800); },[]);
 
@@ -457,6 +508,33 @@ export default function App(){
   const pp={T,b,Pc,Uc,data,S,smartAlerts,alertCount,modal,form,tab,setTab:gotoTab,openModal,closeModal,ff,saveItem,askDel,updateCar,setData,toast,exportJSON,importJSON,INITIAL,searchQ,setSearchQ,filterPessoa,setFilterPessoa,filterMes,setFilterMes,filteredAb,availMeses,calcGas,setCalcGas,calcEta,setCalcEta,mesSel,setMesSel};
 
   // ─── ONBOARDING ──────────────────────────────────────────────────────────
+  // ── AUTH LOADING ──────────────────────────────────────────────────────────
+  if(authLoading) return (
+    <div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{width:40,height:40,border:`3px solid ${DARK.border}`,borderTop:`3px solid ${DARK.accent}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+      <div style={{color:DARK.sub,fontSize:14}}>Carregando...</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  // ── LOGIN SCREEN ──────────────────────────────────────────────────────────
+  if(!user) return (
+    <div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:DARK.card,border:`1px solid ${DARK.border}`,borderRadius:24,padding:40,width:"100%",maxWidth:380,textAlign:"center"}}>
+        <div style={{fontSize:56,marginBottom:16}}>🚗</div>
+        <div style={{fontSize:24,fontWeight:800,color:DARK.white,marginBottom:8,letterSpacing:"-0.5px"}}>Golf Manager</div>
+        <div style={{fontSize:14,color:DARK.sub,marginBottom:32,lineHeight:1.6}}>Controle completo do seu<br/>VW Golf Generation 2004</div>
+        <button onClick={()=>signInWithGoogle().catch(e=>console.error(e))} style={{display:"flex",alignItems:"center",gap:12,background:DARK.white,color:"#1A2040",border:"none",borderRadius:12,padding:"14px 24px",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",justifyContent:"center",marginBottom:16}}>
+          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Entrar com Google
+        </button>
+        <div style={{fontSize:12,color:DARK.muted,lineHeight:1.6}}>
+          Os dados ficam sincronizados entre<br/>todos os seus dispositivos automaticamente.
+        </div>
+      </div>
+    </div>
+  );
+
   if(!data.onboardingDone) return (
     <>
       <Onboarding T={T} onFinish={f=>{ setData(d=>({...d,car:{...d.car,...f},onboardingDone:true})); toast("Bem-vindo ao Golf Manager!",T.green,IC.check); }}/>
@@ -466,7 +544,16 @@ export default function App(){
 
   const SidebarContent=()=>(
     <>
-      <div style={{padding:"18px 14px 12px",borderBottom:`1px solid ${T.border}`}}>
+      {/* User info */}
+      <div style={{padding:"12px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
+        {user?.photoURL&&<img src={user.photoURL} alt="" style={{width:32,height:32,borderRadius:"50%",flexShrink:0}}/>}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.white,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||"Usuário"}</div>
+          <div style={{fontSize:10,color:syncing?T.accent:T.green,marginTop:1}}>{syncing?"⏳ Sincronizando...":"☁️ Sincronizado"}</div>
+        </div>
+        <button onClick={()=>signOutUser()} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:7,cursor:"pointer",color:T.muted,padding:"4px 8px",fontSize:11,fontFamily:"inherit"}} title="Sair">Sair</button>
+      </div>
+      <div style={{padding:"14px 14px 12px",borderBottom:`1px solid ${T.border}`}}>
         <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:"0.08em",marginBottom:9,textTransform:"uppercase"}}>Meu Carro</div>
         <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px"}}>
           <div style={{fontSize:13,fontWeight:800,color:T.white}}>{data.car.modelo}</div>
@@ -521,7 +608,10 @@ export default function App(){
       ):(
         <div style={{display:"flex",flexDirection:"column",flex:1,paddingBottom:64}}>
           <div style={{background:T.surf,borderBottom:`1px solid ${T.border}`,padding:"11px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
-            <div><div style={{fontSize:14,fontWeight:800,color:T.white}}>{ALL.find(i=>i.id===tab)?.l||"Golf Manager"}</div><div style={{fontSize:11,color:T.muted}}>{data.car.modelo} · {fmtKm(data.car.kmAtual)} km</div></div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {user?.photoURL&&<img src={user.photoURL} alt="" style={{width:28,height:28,borderRadius:"50%"}}/>}
+              <div><div style={{fontSize:14,fontWeight:800,color:T.white}}>{ALL.find(i=>i.id===tab)?.l||"Golf Manager"}</div><div style={{fontSize:10,color:syncing?T.accent:T.green}}>{syncing?"⏳ Sincronizando...":"☁️ Salvo"}</div></div>
+            </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {alertCount>0&&<Badge c={T.red}>{alertCount}</Badge>}
               <button style={{...b("primary",true)}} onClick={()=>openModal("quickadd")}><Ico d={IC.bolt} size={14} stroke="#000"/>Abastecer</button>
