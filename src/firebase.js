@@ -1,5 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -12,14 +20,33 @@ const firebaseConfig = {
   measurementId:     "G-P3F13CT5HF",
 };
 
-const app  = initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db   = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
-export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
-export const signOutUser      = () => signOut(auth);
-export const onAuthChange     = (cb) => onAuthStateChanged(auth, cb);
+// Detecta se é mobile — usa redirect no mobile, popup no desktop
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+export const signInWithGoogle = () => {
+  if (isMobile) {
+    return signInWithRedirect(auth, googleProvider);
+  } else {
+    return signInWithPopup(auth, googleProvider).catch((err) => {
+      // Se popup for bloqueado, cai para redirect automaticamente
+      if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
+        return signInWithRedirect(auth, googleProvider);
+      }
+      throw err;
+    });
+  }
+};
+
+// Precisa checar resultado do redirect ao carregar o app
+export const checkRedirectResult = () => getRedirectResult(auth);
+
+export const signOutUser  = () => signOut(auth);
+export const onAuthChange = (cb) => onAuthStateChanged(auth, cb);
 
 const SHARED_DOC = "shared/golf";
 

@@ -3,6 +3,7 @@ import {
   auth, db, googleProvider,
   signInWithGoogle, signOutUser, onAuthChange,
   loadFirestoreData, saveFirestoreData, subscribeToData,
+  checkRedirectResult,
 } from "./firebase.js";
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
@@ -320,6 +321,16 @@ export default function App(){
   useEffect(()=>{ const h=()=>setMobile(window.innerWidth<700); window.addEventListener("resize",h); return()=>window.removeEventListener("resize",h); },[]);
   // ── AUTH LISTENER ─────────────────────────────────────────────────────────
   useEffect(()=>{
+    // Handle redirect result (mobile login)
+    checkRedirectResult().then(async (result) => {
+      if (result?.user) {
+        setSyncing(true);
+        const remote = await loadFirestoreData();
+        if (remote) { setData({...INITIAL,...remote}); saveLocalData({...INITIAL,...remote}); }
+        setSyncing(false);
+      }
+    }).catch(()=>{});
+
     const unsub = onAuthChange(async (u)=>{
       setUser(u);
       setAuthLoading(false);
