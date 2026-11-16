@@ -1,68 +1,72 @@
 # Golf Manager 🚗
 
-App pessoal para controle completo do VW Golf Generation 2004.
+Aplicação web pessoal para centralizar informações relacionadas ao **Volkswagen Golf Generation 2004**.
 
-## Deploy no Netlify (passo a passo)
+> **Categoria:** gestão pessoal de veículo · **Repositório:** [golf-manager](https://github.com/Eliseu-Oliveira/golf-manager)
 
-### 1. Subir para o GitHub
+## Motivação
+
+O Golf Manager foi concebido para reunir informações do veículo em um único ambiente digital, com estrutura preparada para desenvolvimento web, publicação e uso em diferentes dispositivos.
+
+## Stack e infraestrutura identificadas
+
+| Recurso | Evidência no repositório |
+| --- | --- |
+| Vite | `vite.config.js` e comandos locais documentados |
+| Front-end web | `src/`, `public/` e `index.html` |
+| Firebase Cloud Firestore | Arquivo de regras `firestore.rules` |
+| Netlify | `netlify.toml` e documentação de publicação |
+| PWA | Instruções de instalação na tela inicial no README anterior |
+
+**Escopo técnico:** o arquivo de regras do Firestore não confirma, por si só, operações de banco de dados implementadas. A instalação como PWA também deve ser testada nos navegadores de destino.
+
+## Organização
+
+```text
+golf-manager/
+├── public/             # Recursos públicos
+├── src/                # Código-fonte
+├── index.html          # Entrada da aplicação
+├── package.json        # Dependências e scripts
+├── vite.config.js      # Build e desenvolvimento
+├── firestore.rules     # Regras de acesso aos dados
+└── netlify.toml        # Configuração de publicação
+```
+
+## Executar localmente
+
+Pré-requisitos: Node.js e npm compatíveis com o projeto.
 
 ```bash
+git clone https://github.com/Eliseu-Oliveira/golf-manager.git
 cd golf-manager
-git init
-git add .
-git commit -m "first commit"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/golf-manager.git
-git push -u origin main
-```
-
-### 2. Conectar no Netlify
-
-1. Acesse [netlify.com](https://netlify.com) e faça login
-2. Clique em **"Add new site" → "Import an existing project"**
-3. Escolha **GitHub** e selecione o repositório `golf-manager`
-4. As configurações já estão no `netlify.toml`, só clique em **"Deploy site"**
-5. Aguarde ~1 minuto — seu site estará em `https://NOME-ALEATORIO.netlify.app`
-
-### 3. Domínio personalizado (opcional)
-
-No painel do Netlify: **Domain settings → Add custom domain**
-
----
-
-## Instalar no celular como app (PWA)
-
-### Android (Chrome)
-1. Abra o site no Chrome
-2. Toque no menu ⋮ → **"Adicionar à tela inicial"**
-3. O app aparece na home como um aplicativo nativo
-
-### iOS (Safari)
-1. Abra o site no Safari
-2. Toque em **Compartilhar** → **"Adicionar à Tela de Início"**
-
----
-
-## Publicar na Play Store (TWA)
-
-Após o site estar no ar com HTTPS:
-
-1. Instale o [Bubblewrap CLI](https://github.com/GoogleChromeLabs/bubblewrap):
-```bash
-npm i -g @bubblewrap/cli
-bubblewrap init --manifest https://SEU-SITE.netlify.app/manifest.webmanifest
-bubblewrap build
-```
-2. Gera um `.aab` pronto para enviar na Play Store
-3. Precisa de conta Google Developer ($25 taxa única)
-
----
-
-## Rodar localmente
-
-```bash
 npm install
 npm run dev
 ```
 
-Acesse `http://localhost:5173`
+Acesse a URL exibida pelo terminal, normalmente `http://localhost:5173`.
+
+Se alguma função precisar do Firebase, configure o ambiente de forma apropriada e não exponha segredos no repositório.
+
+## Publicar no Netlify
+
+1. Importe o repositório no painel do Netlify.
+2. Confira o build e o diretório de publicação definidos em `netlify.toml`.
+3. Configure as variáveis de ambiente necessárias no painel.
+4. Valide a execução após o deploy.
+
+O README original também descreve a adição do aplicativo à tela inicial do Android ou iOS. A disponibilidade da experiência PWA deve ser validada no dispositivo.
+
+## Cuidados de engenharia
+
+- **Configuração como código:** regras de dados e deploy versionados junto da aplicação.
+- **Segurança:** testar as regras do Firestore e evitar credenciais sensíveis no front-end.
+- **Confiabilidade:** verificar navegação e persistência nos ambientes efetivamente utilizados.
+
+## Melhorias propostas
+
+Estas são sugestões, **não funcionalidades comprovadamente prontas**: documentar as telas existentes, incluir imagens do aplicativo, testar as regras do Firestore, criar testes automatizados e registrar procedimentos de backup se houver dados persistidos.
+
+## Desenvolvedor
+
+**Eliseu Oliveira** · [GitHub](https://github.com/Eliseu-Oliveira) · [LinkedIn](https://www.linkedin.com/in/eliseu-germano/)
